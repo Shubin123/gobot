@@ -1,0 +1,74 @@
+name: Deploy GH Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/export_onnx.py"
+      - "gobot_engine/**"
+      - "checkpoints/**"
+  workflow_dispatch:
+    inputs:
+      num_shards:
+        description: "Number of model shards (1 = no sharding)"
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & Export ONNX
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyTorch (CPU) + ONNX tools
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install onnx onnxruntime numpy
+
+      - name: Install gobot_engine
+        run: pip install -e .
+
+      - name: Export model to ONNX
+        run: |
+          python -X utf8 scripts/export_onnx.py \
+            --output-dir docs/model \
+            --num-shards ${{ github.event.inputs.num_shards || '1' }} \
+            --opset 17
+
+      - name: Show exported files
+        run: |
+          echo "=== docs/model/ ==="
+          ls -lh docs/model/
+          cat docs/model/manifest.json
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.whl
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# PyTorch / ML
+*.pt
+*.pth
+*.onnx
+*.ckpt
+checkpoints/
+!checkpoints/.gitkeep
+selfplay_sgfs/
+
+# Allow the model files we explicitly want to track
+!checkpoints/winning_gobot_model.pt
+!checkpoints/demo_model.pt
+!docs/model/*.onnx
+!docs/model/*.bin
+!docs/model/manifest.json
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-error.log*
+extension_pack/dist/
+
+# Misc
+*.tmp
+*.bak
+.env
+.env.local
+hyperopt_results/

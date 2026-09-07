@@ -1,0 +1,78 @@
+{
+  "manifest_version": 3,
+  "name": "GoBot - Neural Go Assistant & Live Advisor",
+  "version": "1.0.0",
+  "description": "AI-powered candidate heatmaps, live winrate evaluation, and tactical move advisor for Online-Go (OGS), Fox, KGS, BadukPop, Sabaki, and custom boards.",
+  "author": "GoBot Team",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "GoBot Neural Assistant"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.online-go.com/*",
+        "*://online-go.com/*",
+        "*://*.badukpop.com/*",
+        "*://*.foxwq.com/*",
+        "*://*.gokgs.com/*",
+        "*://*.yikeweiqi.com/*",
+        "*://localhost/*",
+        "*://127.0.0.1/*",
+        "<all_urls>"
+      ],
+      "js": [
+        "fast_mcts.js",
+        "engine_client.js",
+        "content_script.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "*://*.online-go.com/*",
+    "*://*.badukpop.com/*",
+    "*://*.foxwq.com/*",
+    "*://*.gokgs.com/*",
+    "*://*.yikeweiqi.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "overlay.css",
+        "fast_mcts.js",
+        "engine_client.js",
+        "icons/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

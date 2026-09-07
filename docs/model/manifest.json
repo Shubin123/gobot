@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "model_name": "GoBot Neural Go Engine",
+  "board_size": 9,
+  "in_channels": 8,
+  "num_filters": 48,
+  "num_blocks": 4,
+  "action_size": 82,
+  "total_size_bytes": 761064,
+  "total_size_kb": 743.2,
+  "num_shards": 1,
+  "shards": [
+    {
+      "index": 0,
+      "filename": "gobot_model.onnx",
+      "size": 761064,
+      "sha256": "9e22f04791e9a0917b2b9d81fa5bc2605be376e291bb134ad0646e4223b8d03d"
+    }
+  ],
+  "onnx_filename": "gobot_model.onnx",
+  "inputs": [
+    {
+      "name": "board",
+      "shape": [
+        1,
+        8,
+        9,
+        9
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "policy_logits",
+      "shape": [
+        1,
+        82
+      ]
+    },
+    {
+      "name": "value",
+      "shape": [
+        1,
+        1
+      ]
+    }
+  ]
+}

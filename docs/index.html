@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoBot — Neural Go Engine Demo</title>
+  <meta name="description" content="Play against GoBot's dual-headed ResNet Go AI, running entirely in your browser via WebGPU-accelerated ONNX Runtime.">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- ONNX Runtime Web — WebGPU + WASM backends -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.all.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ HEADER ══════════════════════════════════ -->
+<header>
+  <div class="header-title">
+    <span>⚫⚪</span>
+    GoBot Neural Go Engine
+    <span class="badge">Demo</span>
+  </div>
+  <nav class="header-links">
+    <a href="https://github.com/Shubin123/gobot" target="_blank">GitHub</a>
+    <a href="https://github.com/Shubin123/gobot#readme" target="_blank">Docs</a>
+    <a href="https://github.com/Shubin123/gobot/releases" target="_blank">Releases</a>
+  </nav>
+</header>
+
+<!-- ═════════════════════════ DOWNLOAD BANNER ═══════════════════════════════ -->
+<div id="downloadBanner">
+  <div class="banner-title">
+    <span>⬇</span>
+    <span id="bannerTitle">Downloading Neural Network Model</span>
+  </div>
+  <p class="banner-sub" id="bannerSub">
+    The model (~743 KB) downloads once and is cached locally in your browser.
+    Subsequent visits load instantly. GPU acceleration will be enabled automatically.
+  </p>
+  <div class="progress-bar-outer">
+    <div class="progress-bar-inner" id="progressBar"></div>
+  </div>
+  <div class="progress-label" id="progressLabel">Fetching manifest...</div>
+</div>
+
+<!-- ══════════════════════════════ MAIN ════════════════════════════════════ -->
+<main>
+  <!-- Board Column -->
+  <div class="board-wrap">
+    <canvas id="goBoard" width="500" height="500"></canvas>
+    <div class="board-info">
+      <span>Turn: <strong id="turnDisplay">Black ⚫</strong></span>
+      <span>Captures: <strong>B: <span id="blackCaptures">0</span> | W: <span id="whiteCaptures">0</span></strong></span>
+      <span>Score: <strong id="scoreDisplay">—</strong></span>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Evaluation panel -->
+    <div class="panel">
+      <div class="panel-title">Position Evaluation</div>
+
+      <div class="winrate-labels">
+        <span>Black: <strong id="blackWinrate">50%</strong></span>
+        <span>White: <strong id="whiteWinrate">50%</strong></span>
+      </div>
+      <div class="winrate-bar">
+        <div id="winrateBlackFill" class="winrate-black" style="width:50%"></div>
+      </div>
+
+      <div class="backend-row">
+        <div class="backend-dot loading" id="backendDot"></div>
+        <span id="backendLabel">Loading model...</span>
+      </div>
+
+      <div id="tacticsAlert" class="tactics-badge" style="display:none">Tactical Override</div>
+
+      <div class="controls">
+        <button id="btnBotMove" class="primary" disabled>⚡ Bot Move</button>
+        <button id="btnPass" disabled>Pass</button>
+        <button id="btnResign" class="danger" disabled>Resign</button>
+        <button id="btnAnalyze" disabled>Analyze</button>
+        <button id="btnUndo" disabled>Undo</button>
+        <button id="btnReset" disabled>Reset</button>
+      </div>
+
+      <!-- Board size selector -->
+      <div class="size-row">
+        <button class="size-btn active" data-size="9">9×9</button>
+        <button class="size-btn" data-size="13">13×13</button>
+        <button class="size-btn" data-size="19">19×19</button>
+      </div>
+    </div>
+
+    <!-- Candidates panel -->
+    <div class="panel">
+      <div class="panel-title">Top Candidates</div>
+      <div id="candidatesList" class="candidates-list">
+        <span style="color:var(--text-muted); font-size:0.83rem">
+          Click "Analyze" or "Bot Move" to see top variations.
+        </span>
+      </div>
+    </div>
+
+    <!-- Info panel -->
+    <div class="panel">
+      <div class="panel-title">About</div>
+      <p style="font-size:0.82rem; color:var(--text-dim); line-height:1.6">
+        Dual-headed ResNet (4 blocks, 48 filters) trained via self-play + SGF curriculum.
+        Inference runs in your browser via
+        <strong style="color:var(--accent)">ONNX Runtime Web</strong> with
+        <strong style="color:var(--accent)">WebGPU</strong> backend
+        (falls back to WASM on older browsers).
+        No data is sent to any server.
+      </p>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════════════════ FOOTER ══════════════════════════════════ -->
+<footer>
+  <span>GoBot &copy; 2026 — MIT License</span>
+  <span>
+    <a href="https://github.com/Shubin123/gobot" target="_blank">View Source</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://github.com/Shubin123/gobot/issues" target="_blank">Report Issue</a>
+  </span>
+</footer>
+
+<!-- Loading overlay (thinking spinner) -->
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <span style="color:var(--text-dim); font-size:0.9rem" id="overlayLabel">Bot is thinking...</span>
+</div>
+
+<!-- Status toast -->
+<div id="statusToast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

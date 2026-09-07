@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "GoBot Move Optimizer & Engine Extension",
+  "version": "1.0.0",
+  "description": "Real-time Go board analysis, move optimization, candidate heatmaps, and engine bridge.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "GoBot Optimizer"
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ]
+}

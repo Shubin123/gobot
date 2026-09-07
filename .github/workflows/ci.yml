@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install ruff
+      - run: ruff check gobot_engine training_pipeline online_extension cli.py
+
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install CPU-only PyTorch (CI)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project + dev deps
+        run: pip install -e ".[dev]"
+
+      - name: Run smoke tests (fast path)
+        run: pytest -m smoke -v --tb=short --no-header
+
+      - name: Run module unit tests
+        run: pytest tests/test_module.py tests/test_smoke.py tests/test_capabilities.py tests/test_training.py -v --tb=short --no-header
+
+      - name: Run integration tests
+        run: pytest tests/test_integration.py tests/test_e2e.py -v --tb=short --no-header
+
+      - name: Run e2e tests
+        run: pytest tests/e2e/ -v --tb=short --no-header
+
+      - name: Generate coverage report
+        run: |
+          pytest tests/ \
+            --cov=gobot_engine \
+            --cov=training_pipeline \
+            --cov=online_extension \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --tb=short \
+            -q
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.12'
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false

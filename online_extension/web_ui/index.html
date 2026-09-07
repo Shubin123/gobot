@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoBot Engine & Move Optimizer</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --board-wood: #e2b069;
+      --board-line: #5c3a10;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warn: #eab308;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    header {
+      width: 100%;
+      max-width: 1000px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #334155;
+    }
+    h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      font-size: 0.75rem;
+      background: #0369a1;
+      color: #e0f2fe;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: auto 340px;
+      gap: 24px;
+      width: 100%;
+      max-width: 1000px;
+    }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; justify-items: center; }
+    }
+    .board-container {
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      background: var(--board-wood);
+      border-radius: 8px;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.4);
+      cursor: crosshair;
+    }
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .panel {
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+    }
+    .panel h2 {
+      font-size: 1rem;
+      margin-bottom: 12px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .winrate-bar-container {
+      margin-bottom: 12px;
+    }
+    .winrate-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+    }
+    .winrate-bar {
+      height: 14px;
+      background: #ffffff;
+      border-radius: 7px;
+      overflow: hidden;
+      display: flex;
+    }
+    .winrate-black {
+      height: 100%;
+      background: #0f172a;
+      transition: width 0.3s ease;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    button {
+      background: #334155;
+      color: var(--text);
+      border: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover { background: #475569; }
+    button.primary {
+      background: var(--accent);
+      color: #0f172a;
+      grid-column: span 2;
+    }
+    button.primary:hover { background: var(--accent-hover); }
+    button.danger { background: #991b1b; }
+    button.danger:hover { background: var(--danger); }
+    .candidates-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .candidate-card {
+      background: #0f172a;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-left: 4px solid var(--accent);
+      font-size: 0.9rem;
+    }
+    .candidate-card .coord { font-weight: bold; color: var(--accent); font-size: 1rem; }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .status-badge.tactics { background: #854d0e; color: #fef08a; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>⚫⚪</span> GoBot Optimizer & Engine <span class="badge">Online Extension</span></h1>
+    <div id="connectionStatus" style="font-size: 0.85rem; color: var(--success);">● API Connected</div>
+  </header>
+
+  <div class="layout">
+    <div class="board-container">
+      <canvas id="goBoard" width="500" height="500"></canvas>
+      <div style="margin-top: 12px; display: flex; gap: 16px; font-size: 0.9rem;">
+        <div>Turn: <strong id="turnDisplay">Black (⚫)</strong></div>
+        <div>Captures: <strong>B: <span id="blackCaptures">0</span> | W: <span id="whiteCaptures">0</span></strong></div>
+        <div>Score: <strong id="scoreDisplay">Live</strong></div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="panel">
+        <h2>Position Evaluation</h2>
+        <div class="winrate-bar-container">
+          <div class="winrate-labels">
+            <span>Black: <strong id="blackWinrate">50.0%</strong></span>
+            <span>White: <strong id="whiteWinrate">50.0%</strong></span>
+          </div>
+          <div class="winrate-bar">
+            <div id="winrateBlackFill" class="winrate-black" style="width: 50%;"></div>
+          </div>
+        </div>
+        <div id="tacticsAlert" class="status-badge tactics" style="display:none;">Tactical Override Active</div>
+
+        <div class="controls">
+          <button id="btnBotMove" class="primary">⚡ Generate Bot Move</button>
+          <button id="btnPass">Pass</button>
+          <button id="btnResign" class="danger">Resign</button>
+          <button id="btnAnalyze">Analyze Position</button>
+          <button id="btnReset">Reset 19x19</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Optimal Candidates</h2>
+        <div id="candidatesList" class="candidates-list">
+          <div style="color: var(--text-dim); font-size: 0.85rem;">Click "Analyze Position" or "Generate Bot Move" to evaluate top variations.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

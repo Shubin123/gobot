@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoBot Neural Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="gobot-popup">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <span class="stone black"></span>
+          <span class="stone white"></span>
+        </div>
+        <div class="brand-text">
+          <h1>GoBot</h1>
+          <span class="subtitle">Neural Go Assistant</span>
+        </div>
+      </div>
+      <div class="engine-badge" id="engine-status-badge">
+        <span class="status-dot"></span>
+        <span class="status-text" id="engine-status-text">Checking...</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="popup-tabs">
+      <button class="tab-btn active" data-tab="tab-advisor">Live Advisor</button>
+      <button class="tab-btn" data-tab="tab-manual">Board Studio</button>
+      <button class="tab-btn" data-tab="tab-settings">Settings</button>
+    </nav>
+
+    <!-- Tab 1: Live Advisor -->
+    <main class="tab-content active" id="tab-advisor">
+      <!-- Live Winrate Card -->
+      <section class="card winrate-card">
+        <div class="card-header">
+          <span class="card-title">Live Winrate Estimate</span>
+          <span class="score-badge" id="advisor-score-est">Even</span>
+        </div>
+        <div class="winrate-meter">
+          <div class="meter-labels">
+            <span class="lbl-b" id="advisor-wr-b">Black 50.0%</span>
+            <span class="lbl-w" id="advisor-wr-w">White 50.0%</span>
+          </div>
+          <div class="meter-bar">
+            <div class="bar-b" id="advisor-bar-b" style="width: 50%;"></div>
+            <div class="bar-w" id="advisor-bar-w" style="width: 50%;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Best Move Spotlight -->
+      <section class="card spotlight-card">
+        <div class="spotlight-badge">OPTIMAL MOVE</div>
+        <div class="spotlight-content">
+          <div class="move-hero" id="spotlight-coord">--</div>
+          <div class="spotlight-details">
+            <div class="spotlight-winrate" id="spotlight-winrate">--% Winrate</div>
+            <div class="spotlight-desc" id="spotlight-desc">Extracting position from page...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Top Candidates List -->
+      <section class="card candidates-card">
+        <div class="card-header">
+          <span class="card-title">Candidate Moves</span>
+          <span class="card-sub" id="to-move-label">Turn: Black</span>
+        </div>
+        <div class="candidates-list" id="candidates-list">
+          <div class="empty-state">No analysis available. Click "Analyze Page" below.</div>
+        </div>
+      </section>
+
+      <!-- Advisor Action Bar -->
+      <div class="action-bar">
+        <button class="btn btn-primary" id="btn-sync-analyze">
+          <span class="icon">⚡</span> Analyze Active Tab
+        </button>
+        <button class="btn btn-secondary" id="btn-toggle-hud">
+          <span class="icon">👁️</span> Toggle Overlay
+        </button>
+      </div>
+    </main>
+
+    <!-- Tab 2: Manual Board Studio -->
+    <main class="tab-content" id="tab-manual">
+      <div class="board-studio-controls">
+        <div class="control-group">
+          <label>Size:</label>
+          <select id="studio-size-select">
+            <option value="19" selected>19x19</option>
+            <option value="13">13x13</option>
+            <option value="9">9x9</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label>Tool:</label>
+          <button class="tool-btn active" data-color="1" id="tool-black">⚫ Black</button>
+          <button class="tool-btn" data-color="2" id="tool-white">⚪ White</button>
+          <button class="tool-btn" data-color="0" id="tool-erase">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Interactive Canvas -->
+      <div class="canvas-wrapper">
+        <canvas id="studio-board-canvas" width="340" height="340"></canvas>
+      </div>
+
+      <div class="studio-info-row">
+        <span id="studio-turn-indicator">To Move: Black</span>
+        <span id="studio-score-indicator">B+0.0</span>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn btn-primary" id="btn-studio-analyze">
+          <span class="icon">🔍</span> Evaluate Position
+        </button>
+        <button class="btn btn-secondary" id="btn-studio-clear">
+          <span class="icon">🗑️</span> Clear
+        </button>
+        <button class="btn btn-secondary" id="btn-studio-starpoints">
+          <span class="icon">⭐</span> Star Points
+        </button>
+      </div>
+    </main>
+
+    <!-- Tab 3: Settings -->
+    <main class="tab-content" id="tab-settings">
+      <form id="settings-form" class="settings-form">
+        <div class="form-group">
+          <label for="setting-server-url">FastAPI Python Engine URL</label>
+          <input type="text" id="setting-server-url" value="http://localhost:8000" placeholder="http://localhost:8000">
+          <small>Local FastAPI server endpoint for PyTorch GoResNet / MCTS</small>
+        </div>
+
+        <div class="form-group">
+          <label for="setting-simulations">MCTS Simulations (<span id="sim-val-display">60</span>)</label>
+          <input type="range" id="setting-simulations" min="10" max="250" step="10" value="60">
+          <small>Higher counts yield deeper tactics, lower counts are faster</small>
+        </div>
+
+        <div class="form-group-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" id="setting-enable-tactics" checked>
+            <span>Enable Joseki & Atari Tactical Heuristics</span>
+          </label>
+        </div>
+
+        <div class="form-group-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" id="setting-force-pure-js">
+            <span>Force Pure JS Engine (Offline Mode)</span>
+          </label>
+        </div>
+
+        <div class="form-group-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" id="setting-auto-analyze" checked>
+            <span>Auto-Analyze Live Board on Move</span>
+          </label>
+        </div>
+
+        <div class="action-bar">
+          <button type="submit" class="btn btn-primary" id="btn-save-settings">
+            <span class="icon">💾</span> Save Settings
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-reconnect-engine">
+            <span class="icon">🔄</span> Test Backend
+          </button>
+        </div>
+      </form>
+    </main>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <span class="version-tag">GoBot v1.0.0 • Pure JS & PyTorch</span>
+      <a href="http://localhost:8000/docs" target="_blank" class="footer-link">API Docs</a>
+    </footer>
+  </div>
+
+  <script src="../fast_mcts.js"></script>
+  <script src="../engine_client.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
