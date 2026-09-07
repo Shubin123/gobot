@@ -31,13 +31,15 @@ ENV/
 *.pth
 *.onnx
 *.ckpt
-checkpoints/
-!checkpoints/.gitkeep
 selfplay_sgfs/
 
-# Allow the model files we explicitly want to track
+# Allow specific model checkpoints
+!checkpoints/
+checkpoints/*
+!checkpoints/.gitkeep
 !checkpoints/winning_gobot_model.pt
 !checkpoints/demo_model.pt
+
 !docs/model/*.onnx
 !docs/model/*.bin
 !docs/model/manifest.json
