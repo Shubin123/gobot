@@ -91,12 +91,26 @@ def test_joseki_book_lookup():
     from gobot_engine.joseki import JosekiBook
     book = JosekiBook()
 
-    # Move 0 on 9x9 -> Valid pro opening candidate
+    # Move 0 on 9x9 -> Valid pro opening candidate under symmetry
     b9 = Board(size=9)
     mv9 = book.get_book_move(b9)
-    assert mv9 in [(4, 4), (2, 4), (4, 2), (2, 2), (6, 2), (6, 6), (2, 6), (3, 3), (5, 5)]
+    valid_9 = {
+        book._transform_coord(seq[0], 9, k, flip)
+        for seq in book.openings_9x9
+        for k in range(4)
+        for flip in [False, True]
+    }
+    assert mv9 in valid_9
+    assert b9.is_legal(mv9, Color.BLACK)
 
-    # Move 0 on 19x19 -> Valid star / corner candidate
+    # Move 0 on 19x19 -> Valid star / corner candidate under symmetry
     b19 = Board(size=19)
     mv19 = book.get_book_move(b19)
-    assert mv19 in [(3, 15), (15, 3), (3, 3), (15, 15), (3, 16), (15, 16)]
+    valid_19 = {
+        book._transform_coord(seq[0], 19, k, flip)
+        for seq in book.openings_19x19
+        for k in range(4)
+        for flip in [False, True]
+    }
+    assert mv19 in valid_19
+    assert b19.is_legal(mv19, Color.BLACK)

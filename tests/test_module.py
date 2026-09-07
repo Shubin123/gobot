@@ -501,20 +501,31 @@ class TestLadderSolver:
 # ===========================================================================
 
 class TestJosekiBook:
-    VALID_9x9_OPENINGS = {(4, 4), (2, 4), (4, 2), (2, 2), (6, 2), (6, 6), (2, 6), (3, 3), (5, 5)}
-    VALID_19x19_OPENINGS = {(3, 15), (15, 3), (3, 3), (15, 15), (3, 16), (15, 16)}
-
     def test_9x9_opening(self):
         book = JosekiBook()
         b = Board(size=9)
         mv = book.get_book_move(b)
-        assert mv in self.VALID_9x9_OPENINGS
+        valid_9 = {
+            book._transform_coord(seq[0], 9, k, flip)
+            for seq in book.openings_9x9
+            for k in range(4)
+            for flip in [False, True]
+        }
+        assert mv in valid_9
+        assert b.is_legal(mv, Color.BLACK)
 
     def test_19x19_opening(self):
         book = JosekiBook()
         b = Board(size=19)
         mv = book.get_book_move(b)
-        assert mv in self.VALID_19x19_OPENINGS
+        valid_19 = {
+            book._transform_coord(seq[0], 19, k, flip)
+            for seq in book.openings_19x19
+            for k in range(4)
+            for flip in [False, True]
+        }
+        assert mv in valid_19
+        assert b.is_legal(mv, Color.BLACK)
 
     def test_mid_game_returns_none_or_move(self):
         book = JosekiBook()
