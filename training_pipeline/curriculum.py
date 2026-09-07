@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import glob
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 import numpy as np
 
 from .sgf_parser import SGFParser, SGFGame

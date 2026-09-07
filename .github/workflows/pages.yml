@@ -38,7 +38,7 @@ jobs:
       - name: Install PyTorch (CPU) + ONNX tools
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install onnx onnxruntime numpy
+          pip install onnx onnxruntime onnxscript numpy
 
       - name: Install gobot_engine
         run: pip install -e .
