@@ -829,12 +829,25 @@ class App {
     this.candidates = [];
     this.thinking = false;
     this.modelReady = false;
+    this.autoBotMove = true;
 
     this._setupCanvas();
     this._setupButtons();
     this._setupSizeButtons();
+    this._setupToggle();
     this._render();
     this._loadModel();
+  }
+
+  _setupToggle() {
+    const toggle = document.getElementById('toggleAutoMove');
+    if (toggle) {
+      this.autoBotMove = toggle.checked;
+      toggle.addEventListener('change', (e) => {
+        this.autoBotMove = e.target.checked;
+        showToast(this.autoBotMove ? 'Auto bot move enabled' : 'Auto bot move disabled', 'success', 2000);
+      });
+    }
   }
 
   _setupCanvas() {
@@ -847,6 +860,10 @@ class App {
         this.candidates = [];
         this._render();
         this._updateInfo();
+
+        if (this.autoBotMove && !this.board.isGameOver) {
+          setTimeout(() => this._botMove(), 120);
+        }
       }
     });
   }
@@ -859,6 +876,10 @@ class App {
       this.candidates = [];
       this._render();
       this._updateInfo();
+
+      if (this.autoBotMove && !this.board.isGameOver) {
+        setTimeout(() => this._botMove(), 120);
+      }
     });
     document.getElementById('btnResign').addEventListener('click', () => {
       this.board.isGameOver = true;

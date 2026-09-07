@@ -9,6 +9,7 @@ let grid = Array(boardSize).fill(0).map(() => Array(boardSize).fill(0));
 let toMove = "B";
 let lastMove = null;
 let topCandidates = [];
+let autoBotMove = true;
 
 const GTP_COLUMNS = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
 
@@ -171,6 +172,9 @@ async function playCoord(r, c) {
       lastMove = { r, c, color: toMove };
       topCandidates = [];
       await fetchState();
+      if (autoBotMove) {
+        setTimeout(requestBotMove, 150);
+      }
     }
   } catch (err) {
     console.error("Play error:", err);
@@ -293,6 +297,9 @@ document.getElementById("btnPass").addEventListener("click", async () => {
     body: JSON.stringify({ color: toMove, coord: "pass" }),
   });
   await fetchState();
+  if (autoBotMove) {
+    setTimeout(requestBotMove, 150);
+  }
 });
 document.getElementById("btnResign").addEventListener("click", async () => {
   await fetch(`${API_BASE}/api/board/play`, {
@@ -302,6 +309,15 @@ document.getElementById("btnResign").addEventListener("click", async () => {
   });
   await fetchState();
 });
+
+// Auto bot move toggle
+const toggleAutoMoveEl = document.getElementById("toggleAutoMove");
+if (toggleAutoMoveEl) {
+  autoBotMove = toggleAutoMoveEl.checked;
+  toggleAutoMoveEl.addEventListener("change", (e) => {
+    autoBotMove = e.target.checked;
+  });
+}
 
 // Initial load
 fetchState();

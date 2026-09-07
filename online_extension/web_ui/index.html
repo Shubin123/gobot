@@ -164,6 +164,55 @@
       margin-bottom: 8px;
     }
     .status-badge.tactics { background: #854d0e; color: #fef08a; }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 8px 12px;
+      background: #0f172a;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #334155;
+      transition: 0.25s ease;
+      border-radius: 20px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.25s ease;
+      border-radius: 50%;
+    }
+    .toggle-switch input:checked + .toggle-slider { background-color: var(--accent); }
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(18px);
+      background-color: #0f172a;
+    }
+    .toggle-label {
+      font-size: 0.83rem;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
@@ -202,6 +251,14 @@
           <button id="btnResign" class="danger">Resign</button>
           <button id="btnAnalyze">Analyze Position</button>
           <button id="btnReset">Reset 19x19</button>
+        </div>
+
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggleAutoMove" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <label for="toggleAutoMove" class="toggle-label">Auto Bot Response</label>
         </div>
       </div>
 
