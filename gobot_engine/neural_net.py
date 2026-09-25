@@ -175,3 +175,192 @@ class DualHeadLoss(nn.Module):
         value_loss = self.mse(pred_value, target_value)
         total_loss = policy_loss + self.value_weight * value_loss
         return total_loss, policy_loss, value_loss
+
+
+# =============================================================================
+# Vision Transformer Architecture for Go (AlphaZero + ViT hybrid)
+# =============================================================================
+
+
+class TransformerBlock(nn.Module):
+    """Pre-norm Transformer block with multi-head self-attention and GELU FFN."""
+
+    def __init__(self, embed_dim: int, num_heads: int, mlp_ratio: float = 4.0, dropout: float = 0.1):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
+        self.norm2 = nn.LayerNorm(embed_dim)
+
+        hidden_dim = int(embed_dim * mlp_ratio)
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, embed_dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Pre-norm architecture
+        norm_x = self.norm1(x)
+        attn_out, _ = self.attn(norm_x, norm_x, norm_x, need_weights=False)
+        x = x + attn_out
+
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
+class GoTransformerNet(nn.Module):
+    """Vision Transformer-based dual-headed policy+value network for Go.
+
+    Architecture inspired by AlphaZero + Vision Transformer (ViT):
+    - Each board intersection is treated as a patch/token
+    - Conv2d patch embedding maps 8 input channels to embed_dim
+    - Learnable 2D positional encoding
+    - CLS token for value head aggregation
+    - Stack of pre-norm TransformerBlock layers
+    - Policy head: operates on all spatial tokens
+    - Value head: extracts from CLS token → scalar in [-1, 1]
+
+    Default config: embed_dim=128, num_heads=4, num_layers=4, mlp_ratio=4.0
+    Supports board sizes 9, 13, 19.
+    """
+
+    def __init__(
+        self,
+        board_size: int = 19,
+        in_channels: int = 8,
+        embed_dim: int = 128,
+        num_heads: int = 4,
+        num_layers: int = 4,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.1
+    ):
+        super().__init__()
+        self.board_size = board_size
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.num_layers = num_layers
+        self.mlp_ratio = mlp_ratio
+        
+        self.action_size = board_size * board_size + 1
+        self.num_patches = board_size * board_size
+        
+        # Patch embedding
+        self.patch_embed = nn.Conv2d(in_channels, embed_dim, kernel_size=1, stride=1)
+        
+        # CLS token and position embeddings
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_dim))
+        
+        # Transformer blocks
+        self.blocks = nn.ModuleList([
+            TransformerBlock(embed_dim, num_heads, mlp_ratio, dropout)
+            for _ in range(num_layers)
+        ])
+        
+        self.norm = nn.LayerNorm(embed_dim)
+        
+        # Policy Head
+        self.policy_conv = nn.Conv2d(embed_dim, 2, kernel_size=1, bias=False)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.policy_fc = nn.Linear(2 * board_size * board_size, self.action_size)
+        
+        # Value Head
+        self.value_head = nn.Sequential(
+            nn.Linear(embed_dim, 64),
+            nn.GELU(),
+            nn.Linear(64, 1),
+            nn.Tanh()
+        )
+        
+        self._init_weights()
+        
+    def _init_weights(self):
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        B = x.shape[0]
+        
+        # Patch embedding: (B, C, H, W) -> (B, E, H, W) -> (B, E, N) -> (B, N, E)
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
+        
+        # Add CLS token
+        cls_tokens = self.cls_token.expand(B, -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        
+        # Add positional embedding
+        x = x + self.pos_embed
+        
+        # Transformer blocks
+        for block in self.blocks:
+            x = block(x)
+            
+        x = self.norm(x)
+        
+        # Separate CLS token and spatial tokens
+        cls_token = x[:, 0]
+        spatial_tokens = x[:, 1:]
+        
+        # Policy computation (using spatial tokens)
+        spatial_2d = spatial_tokens.transpose(1, 2).reshape(B, self.embed_dim, self.board_size, self.board_size)
+        p = F.relu(self.policy_bn(self.policy_conv(spatial_2d)), inplace=True)
+        p = p.reshape(B, -1)
+        policy_logits = self.policy_fc(p)
+        
+        # Value computation (using CLS token)
+        value = self.value_head(cls_token)
+        
+        return policy_logits, value
+
+    def predict(self, board_tensor: torch.Tensor, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, float]:
+        """Inference for a single board state tensor (C, N, N).
+        Returns:
+            policy_probs: 1D Tensor of shape (action_size,)
+            value: float in range [-1, 1]
+        """
+        self.eval()
+        if device is None:
+            device = next(self.parameters()).device
+            
+        with torch.no_grad():
+            if board_tensor.dim() == 3:
+                board_tensor = board_tensor.unsqueeze(0)
+            board_tensor = board_tensor.to(device)
+            logits, val = self.forward(board_tensor)
+            probs = F.softmax(logits, dim=1).squeeze(0).cpu()
+            val_scalar = float(val.squeeze(0).cpu().item())
+        return probs, val_scalar
+
+    def save_checkpoint(self, path: str, extra_meta: Optional[Dict[str, Any]] = None) -> None:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        checkpoint = {
+            "model_state_dict": self.state_dict(),
+            "board_size": self.board_size,
+            "in_channels": self.in_channels,
+            "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+            "num_layers": self.num_layers,
+            "mlp_ratio": self.mlp_ratio,
+            "meta": extra_meta or {},
+        }
+        torch.save(checkpoint, path)
+
+    @classmethod
+    def load_checkpoint(cls, path: str, device: str = "cpu") -> GoTransformerNet:
+        checkpoint = torch.load(path, map_location=device, weights_only=True)
+        model = cls(
+            board_size=checkpoint["board_size"],
+            in_channels=checkpoint.get("in_channels", 8),
+            embed_dim=checkpoint.get("embed_dim", 128),
+            num_heads=checkpoint.get("num_heads", 4),
+            num_layers=checkpoint.get("num_layers", 4),
+            mlp_ratio=checkpoint.get("mlp_ratio", 4.0),
+        )
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.to(device)
+        model.eval()
+        return model

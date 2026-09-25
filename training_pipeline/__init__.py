@@ -5,6 +5,7 @@ from .dataset import GoDataset, GoDataPoint
 from .curriculum import TrainingCurriculum, CurriculumConfig
 from .trainer import GoTrainer
 from .self_play import SelfPlayWorker
+from .rl_trainer import RLTrainer, ReplayBuffer
 
 __all__ = [
     "SGFParser",
@@ -15,4 +16,6 @@ __all__ = [
     "CurriculumConfig",
     "GoTrainer",
     "SelfPlayWorker",
+    "RLTrainer",
+    "ReplayBuffer",
 ]

@@ -6,7 +6,7 @@ import argparse
 import uvicorn
 
 from gobot_engine.board import Board, Color, Move, PASS_MOVE, RESIGN_MOVE
-from gobot_engine.neural_net import GoResNet
+from gobot_engine.neural_net import GoResNet, GoTransformerNet
 from gobot_engine.mcts import MCTS
 from gobot_engine.optimizer import MoveOptimizer
 from gobot_engine.gtp import GTPEngine
@@ -145,9 +145,99 @@ def run_train_pro(args):
     )
 
 
+def _load_model_auto(path, model_type="auto", board_size=9):
+    """Loads a model from checkpoint, auto-detecting type, or creates a new one."""
+    if path and os.path.exists(path):
+        # Try loading and detecting model type from checkpoint
+        import torch
+        checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+        if "embed_dim" in checkpoint or model_type == "transformer":
+            return GoTransformerNet.load_checkpoint(path)
+        return GoResNet.load_checkpoint(path)
+
+    # Create new model
+    if model_type == "transformer":
+        return GoTransformerNet(board_size=board_size)
+    return None
+
+
+def run_train_rl(args):
+    """Runs the deep RL training loop (AlphaZero-style self-play + training + gating)."""
+    from training_pipeline.rl_trainer import RLTrainer
+
+    print(f"\n{'='*60}")
+    print(f"  GoBot Deep RL Training (AlphaZero-style)")
+    print(f"  Model: {args.model_type} | Board: {args.board_size}x{args.board_size}")
+    print(f"  Iterations: {args.iterations} | Games/iter: {args.games_per_iter}")
+    print(f"{'='*60}\n")
+
+    model = _load_model_auto(args.init_model, args.model_type, args.board_size)
+
+    if model is None:
+        if args.model_type == "transformer":
+            model = GoTransformerNet(board_size=args.board_size)
+        else:
+            model = GoResNet(board_size=args.board_size, num_filters=args.filters, num_blocks=args.blocks)
+
+    rl_trainer = RLTrainer(
+        model=model,
+        board_size=args.board_size,
+        num_simulations=args.simulations,
+        lr=args.lr,
+    )
+
+    rl_trainer.run_rl_training(
+        num_iterations=args.iterations,
+        games_per_iteration=args.games_per_iter,
+        training_epochs=args.epochs,
+        batch_size=args.batch_size,
+        eval_games=args.eval_games,
+        win_threshold=args.win_threshold,
+        checkpoint_dir=args.checkpoint_dir,
+        output_model_name=args.output_model,
+    )
+
+
+def run_train_pro_data(args):
+    """Trains on the comprehensive pro game dataset (50+ real games)."""
+    from training_pipeline.pro_games import build_comprehensive_pro_dataset
+
+    print(f"\n{'='*60}")
+    print(f"  GoBot Pro Game Training")
+    print(f"  Model: {args.model_type} | Board: {args.board_size}x{args.board_size}")
+    print(f"{'='*60}\n")
+
+    dataset = build_comprehensive_pro_dataset(board_size=args.board_size)
+    print(f"Loaded {len(dataset)} training positions from professional games.")
+
+    if len(dataset) == 0:
+        print("Error: No training positions found.", file=sys.stderr)
+        return
+
+    model = _load_model_auto(args.init_model, args.model_type, args.board_size)
+    if model is None:
+        if args.model_type == "transformer":
+            model = GoTransformerNet(board_size=args.board_size)
+        else:
+            model = GoResNet(board_size=args.board_size, num_filters=args.filters, num_blocks=args.blocks)
+
+    trainer = GoTrainer(model, lr=args.lr)
+    history = trainer.fit(
+        dataset,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        checkpoint_dir=args.checkpoint_dir,
+        model_name=args.output_model,
+    )
+
+    print(f"\nTraining complete. Model saved to {os.path.join(args.checkpoint_dir, args.output_model)}")
+    for h in history:
+        print(f"Epoch {h['epoch']}: Loss={h['loss']:.4f} | Top1 Acc={h['top1_accuracy']*100:.1f}%")
+
+
 def run_benchmark(args):
     from benchmark_suite import BenchmarkSuite, print_benchmark_report
-    model = GoResNet.load_checkpoint(args.model) if args.model and os.path.exists(args.model) else None
+    model = _load_model_auto(args.model, board_size=args.board_size)
     mcts = MCTS(model=model, num_simulations=args.simulations)
     optimizer = MoveOptimizer(mcts)
     suite = BenchmarkSuite(optimizer, board_size=args.board_size)
@@ -232,6 +322,41 @@ def main():
     p_slf.add_argument("--model", type=str, default=None)
     p_slf.add_argument("--output-dir", type=str, default="selfplay_sgfs")
     p_slf.set_defaults(func=run_selfplay)
+
+    # Train-RL (Deep Reinforcement Learning — AlphaZero-style self-play + training)
+    p_rl = subparsers.add_parser("train-rl", help="Run deep RL training (AlphaZero-style self-play)")
+    p_rl.add_argument("--board-size", type=int, default=9)
+    p_rl.add_argument("--model-type", type=str, default="resnet", choices=["resnet", "transformer"],
+                       help="Neural network architecture (resnet or transformer)")
+    p_rl.add_argument("--iterations", type=int, default=10, help="Number of RL iterations")
+    p_rl.add_argument("--games-per-iter", type=int, default=20, help="Self-play games per iteration")
+    p_rl.add_argument("--epochs", type=int, default=5, help="Training epochs per iteration")
+    p_rl.add_argument("--batch-size", type=int, default=32)
+    p_rl.add_argument("--lr", type=float, default=1e-3)
+    p_rl.add_argument("--simulations", type=int, default=50, help="MCTS simulations per move")
+    p_rl.add_argument("--eval-games", type=int, default=10, help="Evaluation games for gating")
+    p_rl.add_argument("--win-threshold", type=float, default=0.55, help="Win rate to accept new model")
+    p_rl.add_argument("--blocks", type=int, default=4)
+    p_rl.add_argument("--filters", type=int, default=48)
+    p_rl.add_argument("--init-model", type=str, default=None, help="Initial model checkpoint")
+    p_rl.add_argument("--checkpoint-dir", type=str, default="checkpoints")
+    p_rl.add_argument("--output-model", type=str, default="rl_gobot_model.pt")
+    p_rl.set_defaults(func=run_train_rl)
+
+    # Train-Pro-Data (Supervised training on comprehensive professional game dataset)
+    p_pd = subparsers.add_parser("train-pro-data", help="Train on 50+ real professional game records")
+    p_pd.add_argument("--board-size", type=int, default=9)
+    p_pd.add_argument("--model-type", type=str, default="resnet", choices=["resnet", "transformer"],
+                       help="Neural network architecture (resnet or transformer)")
+    p_pd.add_argument("--epochs", type=int, default=10)
+    p_pd.add_argument("--batch-size", type=int, default=32)
+    p_pd.add_argument("--lr", type=float, default=1e-3)
+    p_pd.add_argument("--blocks", type=int, default=6)
+    p_pd.add_argument("--filters", type=int, default=64)
+    p_pd.add_argument("--init-model", type=str, default=None, help="Initial model checkpoint")
+    p_pd.add_argument("--checkpoint-dir", type=str, default="checkpoints")
+    p_pd.add_argument("--output-model", type=str, default="pro_trained_model.pt")
+    p_pd.set_defaults(func=run_train_pro_data)
 
     # Interactive
     p_ply = subparsers.add_parser("play", help="Play interactively in terminal")
