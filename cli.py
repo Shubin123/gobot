@@ -199,19 +199,29 @@ def run_train_rl(args):
 
 
 def run_train_pro_data(args):
-    """Trains on the comprehensive pro game dataset (50+ real games)."""
+    """Trains on real professional game data downloaded from public archives."""
     from training_pipeline.pro_games import build_comprehensive_pro_dataset
 
     print(f"\n{'='*60}")
-    print(f"  GoBot Pro Game Training")
+    print(f"  GoBot Pro Game Training (REAL DATA)")
     print(f"  Model: {args.model_type} | Board: {args.board_size}x{args.board_size}")
+    print(f"  Source: {args.source} | Max games: {args.max_games or 'all'}")
     print(f"{'='*60}\n")
 
-    dataset = build_comprehensive_pro_dataset(board_size=args.board_size)
+    # Build dataset from real downloaded games
+    sgf_dirs = args.sgf_dirs if hasattr(args, 'sgf_dirs') and args.sgf_dirs else None
+    dataset = build_comprehensive_pro_dataset(
+        board_size=args.board_size,
+        max_games=args.max_games,
+        data_dir=args.data_dir,
+        source=args.source,
+        sgf_dirs=sgf_dirs,
+    )
     print(f"Loaded {len(dataset)} training positions from professional games.")
 
     if len(dataset) == 0:
         print("Error: No training positions found.", file=sys.stderr)
+        print("  Try: gobot download-games --source cwi", file=sys.stderr)
         return
 
     model = _load_model_auto(args.init_model, args.model_type, args.board_size)
@@ -233,6 +243,25 @@ def run_train_pro_data(args):
     print(f"\nTraining complete. Model saved to {os.path.join(args.checkpoint_dir, args.output_model)}")
     for h in history:
         print(f"Epoch {h['epoch']}: Loss={h['loss']:.4f} | Top1 Acc={h['top1_accuracy']*100:.1f}%")
+
+
+def run_download_games(args):
+    """Downloads real professional game archives for training."""
+    from training_pipeline.sgf_downloader import download_and_prepare, list_available_sources
+
+    if args.list_sources:
+        list_available_sources()
+        return
+
+    print(f"\n  Downloading {args.source} game archive...")
+    files = download_and_prepare(
+        source_key=args.source,
+        output_dir=args.data_dir,
+        board_size=args.board_size if hasattr(args, 'board_size') else None,
+        force=args.force,
+    )
+    print(f"\n  Done! {len(files)} SGF files ready for training.")
+    print(f"  Use: gobot train-pro-data --source {args.source} --data-dir {args.data_dir}")
 
 
 def run_benchmark(args):
@@ -343,13 +372,18 @@ def main():
     p_rl.add_argument("--output-model", type=str, default="rl_gobot_model.pt")
     p_rl.set_defaults(func=run_train_rl)
 
-    # Train-Pro-Data (Supervised training on comprehensive professional game dataset)
-    p_pd = subparsers.add_parser("train-pro-data", help="Train on 50+ real professional game records")
-    p_pd.add_argument("--board-size", type=int, default=9)
+    # Train-Pro-Data (Supervised training on REAL professional game data)
+    p_pd = subparsers.add_parser("train-pro-data", help="Train on real professional game archives (downloads 90K+ games)")
+    p_pd.add_argument("--board-size", type=int, default=19, help="Board size to filter games (9, 13, or 19)")
     p_pd.add_argument("--model-type", type=str, default="resnet", choices=["resnet", "transformer"],
                        help="Neural network architecture (resnet or transformer)")
+    p_pd.add_argument("--source", type=str, default="cwi", choices=["cwi", "jgdb"],
+                       help="Data source: cwi (90K games) or jgdb (500K games)")
+    p_pd.add_argument("--max-games", type=int, default=None, help="Limit number of games to process")
+    p_pd.add_argument("--data-dir", type=str, default="sgf_data", help="Directory to cache downloaded SGF archives")
+    p_pd.add_argument("--sgf-dirs", nargs="+", default=None, help="Custom SGF directories (skip download)")
     p_pd.add_argument("--epochs", type=int, default=10)
-    p_pd.add_argument("--batch-size", type=int, default=32)
+    p_pd.add_argument("--batch-size", type=int, default=64)
     p_pd.add_argument("--lr", type=float, default=1e-3)
     p_pd.add_argument("--blocks", type=int, default=6)
     p_pd.add_argument("--filters", type=int, default=64)
@@ -357,6 +391,16 @@ def main():
     p_pd.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     p_pd.add_argument("--output-model", type=str, default="pro_trained_model.pt")
     p_pd.set_defaults(func=run_train_pro_data)
+
+    # Download-Games (Download real game archives)
+    p_dl = subparsers.add_parser("download-games", help="Download real professional game archives for training")
+    p_dl.add_argument("--source", type=str, default="cwi", choices=["cwi", "jgdb"],
+                       help="cwi = 90K Japanese pro games (46MB), jgdb = 500K games (194MB)")
+    p_dl.add_argument("--data-dir", type=str, default="sgf_data", help="Where to store downloaded games")
+    p_dl.add_argument("--board-size", type=int, default=None, help="Filter for specific board size")
+    p_dl.add_argument("--force", action="store_true", help="Re-download even if already exists")
+    p_dl.add_argument("--list-sources", action="store_true", help="List all available data sources")
+    p_dl.set_defaults(func=run_download_games)
 
     # Interactive
     p_ply = subparsers.add_parser("play", help="Play interactively in terminal")

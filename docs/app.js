@@ -401,31 +401,55 @@ class BoardState {
     return b;
   }
 
-  /** Build 8-channel feature tensor matching gobot_engine/board.py */
+  /** Build 8-channel feature tensor matching gobot_engine/board.py exactly:
+   *  0: Current player stones
+   *  1: Opponent stones
+   *  2: Current player 1 liberty
+   *  3: Current player 2 liberties
+   *  4: Opponent 1 liberty
+   *  5: Opponent 2 liberties
+   *  6: Ko point location
+   *  7: Color to move (1.0 if Black, 0.0 if White)
+   */
   toTensor(size) {
-    // Channels:
-    //  0: current player stones
-    //  1: opponent stones
-    //  2: empty
-    //  3: current player to move = 1.0 if black else 0.0 (whole plane)
-    //  4-7: previous move markers (simplified: set to 0 for demo)
     const N = size;
     const tensor = new Float32Array(8 * N * N);
     const cur = this.toMove;
     const opp = opponent(cur);
+
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
         const stone = this.get(r, c);
         const base = r * N + c;
-        if (stone === cur) tensor[0 * N * N + base] = 1.0;
-        else if (stone === opp) tensor[1 * N * N + base] = 1.0;
-        else tensor[2 * N * N + base] = 1.0;
+        if (stone === cur) {
+          tensor[0 * N * N + base] = 1.0;
+          const info = this.groupInfo(r, c);
+          if (info) {
+            if (info.liberties.size === 1) tensor[2 * N * N + base] = 1.0;
+            else if (info.liberties.size === 2) tensor[3 * N * N + base] = 1.0;
+          }
+        } else if (stone === opp) {
+          tensor[1 * N * N + base] = 1.0;
+          const info = this.groupInfo(r, c);
+          if (info) {
+            if (info.liberties.size === 1) tensor[4 * N * N + base] = 1.0;
+            else if (info.liberties.size === 2) tensor[5 * N * N + base] = 1.0;
+          }
+        }
       }
     }
-    // Channel 3: to-move indicator
+
+    // Plane 6: Ko point
+    if (this.koPoint >= 0 && this.koPoint < N * N) {
+      tensor[6 * N * N + this.koPoint] = 1.0;
+    }
+
+    // Plane 7: Color to move (1.0 if Black, 0.0 if White)
     const toMoveVal = (cur === BLACK) ? 1.0 : 0.0;
-    for (let i = 0; i < N * N; i++) tensor[3 * N * N + i] = toMoveVal;
-    // Channels 4-7 left at 0
+    for (let i = 0; i < N * N; i++) {
+      tensor[7 * N * N + i] = toMoveVal;
+    }
+
     return tensor;
   }
 
@@ -461,17 +485,25 @@ class PureMCTS {
     this.numSims = numSims;
   }
 
-  /** Random rollout from board state, returns +1 if startColor wins */
-  rollout(board, startColor, maxMoves = 50) {
+  /** Rollout from board state with anti-edge bias, returns +1 if startColor wins */
+  rollout(board, startColor, maxMoves = 40) {
     const b = board.clone();
     let color = b.toMove;
+    const N = b.size;
+
     for (let i = 0; i < maxMoves; i++) {
       if (b.isGameOver) break;
       const moves = b.legalMoves(color);
       if (moves.length === 0) {
         b.play(-1, -1, color);
       } else {
-        const [r, c] = moves[Math.floor(Math.random() * moves.length)];
+        let candidates = moves;
+        // Anti-corner-crawl: Avoid 1st line moves in opening unless capturing
+        if (b.moveCount < 8 && moves.length > 4) {
+          const interior = moves.filter(([r, c]) => r > 0 && r < N - 1 && c > 0 && c < N - 1);
+          if (interior.length > 0) candidates = interior;
+        }
+        const [r, c] = candidates[Math.floor(Math.random() * candidates.length)];
         b.play(r, c, color);
       }
       color = opponent(color);
@@ -485,7 +517,19 @@ class PureMCTS {
   getBestMove(board) {
     const color = board.toMove;
     const moves = board.legalMoves(color);
-    if (moves.length === 0) return { move: [-1, -1], winrate: 0.5, candidates: [] };
+    if (moves.length === 0) return { move: [-1, -1], winrate: 0.5, candidates: [], tacticalOverride: null };
+
+    const N = board.size;
+    // On opening move, play Tengen or star point
+    if (board.moveCount === 0) {
+      const mid = Math.floor(N / 2);
+      return {
+        move: [mid, mid],
+        winrate: 0.55,
+        candidates: [{ r: mid, c: mid, winrate: 0.55, visits: 100, gtp: board.rcToGtp(mid, mid) }],
+        tacticalOverride: 'Tengen Opening',
+      };
+    }
 
     const scores = new Map();
     const visits = new Map();
@@ -511,7 +555,7 @@ class PureMCTS {
       const v = visits.get(key) || 1;
       const q = (scores.get(key) || 0) / v;
       const winrate = (q + 1) / 2;
-      candidates.push({ r, c, winrate, visits: v });
+      candidates.push({ r, c, winrate, visits: v, gtp: board.rcToGtp(r, c) });
       if (q > bestQ) { bestQ = q; bestMove = [r, c]; }
     }
     candidates.sort((a, b) => b.visits - a.visits);
@@ -520,6 +564,7 @@ class PureMCTS {
       move: bestMove,
       winrate: (bestQ + 1) / 2,
       candidates: candidates.slice(0, 8),
+      tacticalOverride: null,
     };
   }
 }
@@ -562,6 +607,11 @@ class GoEngine {
   async infer(board) {
     if (!this.session) return null;
     const N = board.size;
+    // Guard against board size mismatch with trained model
+    if (this.manifest && this.manifest.board_size && this.manifest.board_size !== N) {
+      return null;
+    }
+
     const tensor = board.toTensor(N);
     const input = new ort.Tensor('float32', tensor, [1, 8, N, N]);
     const results = await this.session.run({ board: input });
@@ -577,13 +627,65 @@ class GoEngine {
     return { probs, value };
   }
 
-  /** MCTS-lite guided by neural network (simplified PUCT) */
+  /** Tactical pattern detection: Atari captures and Atari escapes */
+  _findTacticalMove(board, color) {
+    const opp = opponent(color);
+    const N = board.size;
+
+    // 1. Capture enemy group in atari
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (board.get(r, c) === opp) {
+          const info = board.groupInfo(r, c);
+          if (info && info.liberties.size === 1) {
+            const libIdx = [...info.liberties][0];
+            const lr = Math.floor(libIdx / N);
+            const lc = libIdx % N;
+            if (board.isLegal(lr, lc, color)) {
+              return { move: [lr, lc], name: 'Atari Capture' };
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Escape atari if our group has 1 liberty
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (board.get(r, c) === color) {
+          const info = board.groupInfo(r, c);
+          if (info && info.liberties.size === 1) {
+            const libIdx = [...info.liberties][0];
+            const lr = Math.floor(libIdx / N);
+            const lc = libIdx % N;
+            if (board.isLegal(lr, lc, color)) {
+              const bTest = board.clone();
+              bTest.play(lr, lc, color);
+              const testInfo = bTest.groupInfo(lr, lc);
+              if (testInfo && testInfo.liberties.size > 1) {
+                return { move: [lr, lc], name: 'Escape Atari' };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /** MCTS guided by neural network + tactical heuristics */
   async getBestMove(board, numSims = 80) {
     const color = board.toMove;
     const legalMoves = board.legalMoves(color);
     if (legalMoves.length === 0) {
       return { move: [-1, -1], winrate: 0.5, candidates: [], tacticalOverride: null };
     }
+
+    const N = board.size;
+
+    // Check for urgent tactical moves (capture or save atari)
+    const tactical = this._findTacticalMove(board, color);
 
     // Neural net evaluation of current position
     let priorProbs = null;
@@ -593,14 +695,12 @@ class GoEngine {
         const result = await this.infer(board);
         if (result) {
           priorProbs = result.probs;
-          rootValue = (result.value + 1) / 2;  // Map [-1,1] -> [0,1]
+          rootValue = (result.value + 1) / 2;
         }
       } catch (e) {
         console.warn('[GoBot] Inference failed, falling back to uniform priors:', e.message);
       }
     }
-
-    const N = board.size;
 
     // Node stats
     const Q = new Map();
@@ -612,7 +712,28 @@ class GoEngine {
       const key = `${r},${c}`;
       Q.set(key, 0); W.set(key, 0); V.set(key, 0);
       const actionIdx = r * N + c;
-      P.set(key, priorProbs ? priorProbs[actionIdx] : 1.0 / legalMoves.length);
+      let p = priorProbs ? priorProbs[actionIdx] : (1.0 / legalMoves.length);
+
+      // Anti-corner-crawl heuristic:
+      // Penalize 1st-line moves in early opening (moveCount < 10) unless capturing
+      if (board.moveCount < 10 && (r === 0 || r === N - 1 || c === 0 || c === N - 1)) {
+        p *= 0.15;
+      }
+
+      // Self-atari penalty: playing into a spot with only 1 liberty and no captures is a blunder
+      const bTest = board.clone();
+      bTest.play(r, c, color);
+      const testInfo = bTest.groupInfo(r, c);
+      if (testInfo && testInfo.liberties.size === 1 && bTest.captures[color] === board.captures[color]) {
+        p *= 0.05;
+      }
+
+      // If this matches an urgent tactical move, boost prior strongly
+      if (tactical && tactical.move[0] === r && tactical.move[1] === c) {
+        p *= 8.0;
+      }
+
+      P.set(key, Math.max(1e-4, p));
     }
 
     let totalVisits = 0;
@@ -671,11 +792,16 @@ class GoEngine {
     const [br, bc] = bestMove;
     const bestKey = `${br},${bc}`;
 
+    let overrideName = null;
+    if (tactical && bestMove[0] === tactical.move[0] && bestMove[1] === tactical.move[1]) {
+      overrideName = tactical.name;
+    }
+
     return {
       move: bestMove,
       winrate: Q.get(bestKey) || 0.5,
       candidates: candidates.slice(0, 8),
-      tacticalOverride: null,
+      tacticalOverride: overrideName,
     };
   }
 }

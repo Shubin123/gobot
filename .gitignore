@@ -75,3 +75,6 @@ extension_pack/dist/
 .env
 .env.local
 hyperopt_results/
+
+# Downloaded SGF game archives
+sgf_data/

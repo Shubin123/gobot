@@ -48,6 +48,7 @@ def create_app(model_path: Optional[str] = None) -> FastAPI:
     # Auto-discover winning model if not specified
     if not model_path:
         for candidate in [
+            "checkpoints/real_9x9_model.pt",
             "checkpoints/winning_gobot_model.pt",
             "checkpoints/gobot_model.pt",
             "checkpoints/demo_model.pt",
@@ -57,10 +58,16 @@ def create_app(model_path: Optional[str] = None) -> FastAPI:
                 break
 
     # Initialize neural model if checkpoint exists
-    model: Optional[GoResNet] = None
+    model = None
     if model_path and os.path.exists(model_path):
         try:
-            model = GoResNet.load_checkpoint(model_path)
+            import torch
+            ckpt = torch.load(model_path, map_location="cpu", weights_only=True)
+            if "embed_dim" in ckpt:
+                from gobot_engine.neural_net import GoTransformerNet
+                model = GoTransformerNet.load_checkpoint(model_path)
+            else:
+                model = GoResNet.load_checkpoint(model_path)
         except Exception:
             model = None
 

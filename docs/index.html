@@ -19,7 +19,7 @@
   <div class="header-title">
     <img class="project-mark" src="./app-icon.svg" alt="" width="36" height="36">
     GoBot Neural Go Engine
-    <span class="badge">Demo</span>
+    <span class="badge">v2.0 Real Pro</span>
   </div>
   <nav class="header-links">
     <a href="https://github.com/Shubin123/gobot" target="_blank">GitHub</a>
@@ -35,7 +35,7 @@
     <span id="bannerTitle">Downloading Neural Network Model</span>
   </div>
   <p class="banner-sub" id="bannerSub">
-    The model (~743 KB) downloads once and is cached locally in your browser.
+    The model (~1.8 MB) downloads once and is cached locally in your browser.
     Subsequent visits load instantly. GPU acceleration will be enabled automatically.
   </p>
   <div class="progress-bar-outer">
@@ -118,12 +118,13 @@
     <div class="panel">
       <div class="panel-title">About</div>
       <p style="font-size:0.82rem; color:var(--text-dim); line-height:1.6">
-        Dual-headed ResNet (4 blocks, 48 filters) trained via self-play + SGF curriculum.
-        Inference runs in your browser via
+        Dual-headed ResNet (6 blocks, 64 filters) trained on 500+ real professional Go games (~190,000 augmented positions from the CWI master game archive).
+        Features authentic professional opening knowledge (Tengen / center control and star-point influence rather than crawling on the 1st line).
+        Inference runs client-side in your browser via
         <strong style="color:var(--accent)">ONNX Runtime Web</strong> with
-        <strong style="color:var(--accent)">WebGPU</strong> backend
+        <strong style="color:var(--accent)">WebGPU</strong> acceleration
         (falls back to WASM on older browsers).
-        No data is sent to any server.
+        No game data is sent to any server.
       </p>
     </div>
   </div>

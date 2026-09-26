@@ -34,14 +34,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import numpy as np
 
-from gobot_engine.neural_net import GoResNet
+from gobot_engine.neural_net import GoResNet, GoTransformerNet
 
 
 DEFAULT_CANDIDATES = [
+    "checkpoints/real_9x9_model.pt",
     "checkpoints/winning_gobot_model.pt",
     "checkpoints/demo_model.pt",
     "checkpoints/gobot_model.pt",
 ]
+
+
+def load_model_from_checkpoint(path: str) -> GoResNet | GoTransformerNet:
+    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    if "embed_dim" in checkpoint:
+        return GoTransformerNet.load_checkpoint(path, device="cpu")
+    return GoResNet.load_checkpoint(path, device="cpu")
 
 
 def find_model(model_path: str | None) -> str:
@@ -66,11 +74,11 @@ def sha256_file(path: str) -> str:
 
 
 def export_to_onnx(
-    model: GoResNet,
+    model: GoResNet | GoTransformerNet,
     output_path: str,
     opset: int = 17,
 ) -> None:
-    """Export GoResNet to ONNX with dynamic batch axis."""
+    """Export GoResNet or GoTransformerNet to ONNX with dynamic batch axis."""
     model.eval()
     board_size = model.board_size
     in_channels = model.in_channels
@@ -88,6 +96,16 @@ def export_to_onnx(
         opset_version=opset,
         do_constant_folding=True,
     )
+    # Ensure all tensor weights are embedded inside the single ONNX file (required for browser)
+    try:
+        import onnx
+        onnx_model = onnx.load(output_path, load_external_data=True)
+        onnx.save(onnx_model, output_path, save_as_external_data=False)
+        data_file = output_path + ".data"
+        if os.path.exists(data_file):
+            os.remove(data_file)
+    except Exception as e:
+        print(f"  Note: onnx weight embedding check: {e}")
     print(f"  -> ONNX written: {output_path} ({os.path.getsize(output_path) / 1024:.1f} KB)")
 
 
@@ -130,17 +148,20 @@ def write_manifest(
     output_dir: str,
     shards: list[dict],
     onnx_path: str,
-    model: GoResNet,
+    model: GoResNet | GoTransformerNet,
     num_shards: int,
 ) -> None:
     total_size = sum(s["size"] for s in shards)
+    is_transformer = isinstance(model, GoTransformerNet)
     manifest = {
-        "version": "1.0",
-        "model_name": "GoBot Neural Go Engine",
+        "version": "2.0",
+        "model_name": "GoBot Real-Pro Engine v2.0",
+        "model_architecture": "transformer" if is_transformer else "resnet",
+        "training_data": "518 real professional games from CWI archive",
         "board_size": model.board_size,
         "in_channels": model.in_channels,
-        "num_filters": model.num_filters,
-        "num_blocks": model.num_blocks,
+        "num_filters": getattr(model, "num_filters", getattr(model, "embed_dim", 64)),
+        "num_blocks": getattr(model, "num_blocks", getattr(model, "num_layers", 6)),
         "action_size": model.action_size,
         "total_size_bytes": total_size,
         "total_size_kb": round(total_size / 1024, 1),
@@ -159,7 +180,7 @@ def write_manifest(
     print(f"  Manifest: {manifest_path}")
 
 
-def verify_onnx(onnx_path: str, model: GoResNet) -> None:
+def verify_onnx(onnx_path: str, model: GoResNet | GoTransformerNet) -> None:
     """Quick sanity check: run onnxruntime inference and compare to PyTorch."""
     try:
         import onnxruntime as ort
@@ -197,10 +218,9 @@ def main():
     # --- Find & load model ---
     model_path = find_model(args.model)
     print(f"Loading model: {model_path}")
-    model = GoResNet.load_checkpoint(model_path, device="cpu")
+    model = load_model_from_checkpoint(model_path)
     model.eval()
-    print(f"  Architecture: board={model.board_size}x{model.board_size}, "
-          f"filters={model.num_filters}, blocks={model.num_blocks}")
+    print(f"  Architecture: {model.__class__.__name__}, board={model.board_size}x{model.board_size}")
 
     os.makedirs(args.output_dir, exist_ok=True)
     onnx_path = os.path.join(args.output_dir, f"{args.output_name}.onnx")
